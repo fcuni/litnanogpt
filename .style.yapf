@@ -1,0 +1,11 @@
+[style]
+indent_width = 4
+column_limit = 120
+based_on_style = google
+spaces_before_comment = 4
+split_before_logical_operator = true
+blank_line_before_nested_class_or_def = false
+coalesce_brackets = true
+dedent_closing_brackets = true
+split_all_top_level_comma_separated_values = true
+split_penalty_import_names = 100

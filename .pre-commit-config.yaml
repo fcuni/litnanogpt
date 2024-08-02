@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/PyCQA/isort
+    rev: '5.13.2'
+    hooks:
+      - id: isort
+        args: [ '--profile=black' ]
+  - repo: https://github.com/google/yapf
+    rev: v0.31.0
+    hooks:
+      - id: yapf
+        name: "yapf"
+  - repo: https://github.com/jazzband/pip-tools
+    rev: '7.4.1'
+    hooks:
+      - id: pip-compile
+        name: pip-compile
+        args: ['--allow-unsafe', '--resolver=backtracking' ]
+        files: ^(requirements\.txt)$
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 'v4.6.0'
+    hooks:
+      - id: check-ast
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
