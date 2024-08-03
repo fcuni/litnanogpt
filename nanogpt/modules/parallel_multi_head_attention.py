@@ -1,13 +1,17 @@
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 def _use_flash_attention() -> bool:
-    "Use flash attention if available. Requires an available GPU and torch >= 2.0"
-    has_cuda = torch.cuda.is_available()
+    """
+    Use flash attention if available. Requires torch >= 2.0, if no GPU is available it defaults to torch attention 
+    implementation
+    """
     has_torch_2 = hasattr(F, "scaled_dot_product_attention")
-    return has_cuda and has_torch_2
+    return has_torch_2
 
 
 def _produce_att_mask(mask_size: int) -> torch.Tensor:
@@ -18,13 +22,32 @@ def _produce_att_mask(mask_size: int) -> torch.Tensor:
     return tril.view((1, 1, *tril.shape))
 
 
+@dataclass
+class AttentionConfig:
+    """The defaults are taken from the Nanogpt implementation."""
+    input_dim: int = 768
+    """Input dimension of the attention layer."""
+    hidden_dim: int = 64
+    """Hidden dimension of the attention heads."""
+    sequence_length: int = 1024
+    """Length of the input sequence."""
+    num_heads: int = 12
+    """Number of attention heads."""
+    dropout: float = 0
+    """Single dropout value used for attention layers, after the softmax and after the projection layer."""
+    @classmethod
+    def make_smoke(cls) -> "AttentionConfig":
+        """Create a smoke test configuration."""
+        return cls(5, 5, 1, 1, 0)
+
+
 class ParallelMultiHeadAttention(nn.Module):
     """
     This class takes num of heads as a dimension and parallelizes the  self-attention computation.
 
     First, we take some input with dims [B, L, I] and shape it as [B, L, H, K, I]. Where B is the batch size, L is the 
     sequence length, I is the input dimension, H is the number of heads and K=3 is the {key,value,query} triplet. Then, 
-    we pass evaluate the B batches in parallel for each head.
+    we evaluate the B batches in parallel for each head.
     """
     def __init__(self, input_dim: int, hidden_dim: int, sequence_length: int, num_heads: int, dropout: float = 0):
         super().__init__()
@@ -38,6 +61,9 @@ class ParallelMultiHeadAttention(nn.Module):
         # The projection is then from the concated attention output with
         # dims [B, H x h, I], where h is the hidden dimension
         self.project = nn.Linear(hidden_dim * num_heads, input_dim)
+
+        self.dropout_att = nn.Dropout(dropout)
+        self.dropout_project = nn.Dropout(dropout)
 
         self.use_flash = _use_flash_attention()
         self.dropout = dropout
@@ -57,25 +83,39 @@ class ParallelMultiHeadAttention(nn.Module):
         v = v.view(bs, seq_len, self.num_heads, self.hidden_dim).transpose(1, 2)
         return q, k, v
 
+    def _mask_attention(self, att: torch.Tensor, seq_len: int) -> torch.Tensor:
+        cropped_mask = self._att_mask[:, :, :seq_len, :seq_len]
+        return att.masked_fill(cropped_mask, float("-inf"))
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.qvk_linear(x)
-        q, k, v = self._broadcast_qvk(x)
+        """
+        The forward does not implement the residual inside -- following the identity highway idea
+        """
+        # expected input dimensionality is [B, L, I]
+        assert x.ndim == 3, f"Expected number of input dimensions to be 3, got {x.ndim}"
+        bs, in_seq_len, in_dim = x.shape    # [B, L, I]
+
+        x = self.qvk_linear(x)    # [B, L, KxHxh]
+        q, k, v = self._broadcast_qvk(x)    # [B, H, L, h] x K
 
         if self.use_flash:
             att = F.scaled_dot_product_attention(
                 q, k, v, dropout_p=self.dropout if self.training else 0, is_causal=True, scale=self.scale
             )
         else:
-            # using inneficient manual implementation
+            # using inneficient manual implementation, following nanogpt
             # do (q [B, H , L, h] x k.T [B, H, h, L]) = qk [B, H, L, L]
-            qk = self.scale * (q @ k.transpose(-2, -1))
-            qk_masked = qk.masked_fill(self._att_mask[:, :, :qk.size(-2), :qk.size(-1)], float("-inf"))
-            att = F.softmax(qk_masked, dim=-1)
-            att = qk @ v
-        return att
+            att = self.scale * (q @ k.transpose(-2, -1))
+            att = self._mask_attention(att, in_seq_len)
+            att = F.softmax(att, dim=-1)
+            att = att @ v    # att [B, H, L, L] x v [B, H, L, h] = att [B, H, L, h]
+        # concat output of attention heads, [B, L, Hxh]
+        y = att.transpose(1, 2).contiguous().view(bs, in_seq_len, self.hidden_dim * self.num_heads)
 
+        # project the output
+        out = self.dropout_project(self.project(y))    # [B, L, I]
+        return out
 
-if __name__ == "__main__":
-    mh = ParallelMultiHeadAttention(5, 5, 1)
-    t = torch.rand((1, 1, 5))
-    print(mh(t))
+    @classmethod
+    def from_config(cls, config: AttentionConfig) -> "ParallelMultiHeadAttention":
+        return cls(config.input_dim, config.hidden_dim, config.sequence_length, config.num_heads, config.dropout)
