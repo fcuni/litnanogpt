@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from inspect import signature
 from typing import Callable, cast
 
@@ -22,8 +22,8 @@ def _adamw_has_fused() -> bool:
 
 @dataclass
 class NanoGPTConfig:
-    attention_config: AttentionConfig = AttentionConfig()
-    ff_dims: list[int] = [128, 128]
+    attention_config: AttentionConfig = field(default_factory=AttentionConfig)
+    ff_dims: list[int, ...] = field(default_factory=lambda: [128, 128])
     num_blocks: int = 3
     vocabulary_size: int = 50304    # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
     positional_encoder: Callable[[int, int], PositionalEncoder] = VanillaPositionalEncoder

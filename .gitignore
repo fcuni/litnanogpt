@@ -172,6 +172,7 @@ cython_debug/
 **/*.csv
 
 # Ignore logs
+data
 **/*.log
 **/*.txt
 **/*.json
