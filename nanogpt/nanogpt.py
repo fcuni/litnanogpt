@@ -1,17 +1,23 @@
 from dataclasses import dataclass
-from typing import Any, Callable
+from inspect import signature
+from typing import Callable, cast
 
 import lightning as pl
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
 from torch import nn
-from torchmetrics import metric
 
 from nanogpt.modules.parallel_multi_head_attention import AttentionConfig
 from nanogpt.modules.positional_encoder import (PositionalEncoder, VanillaPositionalEncoder)
 from nanogpt.modules.transformer_block import DecoderBlock
 
 INPUT_BATCH = tuple[torch.Tensor, torch.Tensor]    # the tuple (input, labels)
+
+
+def _adamw_has_fused() -> bool:
+    """Check if the current PyTorch build has the fused Adam implementation, faster than vanilla for-loop."""
+    return "fused" in signature(optim.AdamW).parameters
 
 
 @dataclass
@@ -99,7 +105,8 @@ class NanoGPT(pl.LightningModule):
             if top_k is not None:
                 assert top_k > 0, f"Expected a positive integer for the top k search, got {top_k}"
                 top_k = min(top_k, pred_logits.size(-1))
-                v, _ = torch.topk(pred_logits, top_k)
+                top_k = cast(int, top_k)    # pyright freaks out without the type casting
+                v, _ = torch.topk(pred_logits, top_k, dim=-1)
                 mask_ = pred_logits < v[:, [-1]]
                 pred_logits[mask_] = -float("inf")
 
@@ -116,5 +123,8 @@ class NanoGPT(pl.LightningModule):
         """Simple alias for predict_step. More clear semantics outside the Lightning Trainer API."""
         return self.predict_step(batch, max_tokens, temperature, top_k)
 
-    def configure_optimizers(self):
-        ...
+    def configure_optimizers(self) -> optim.Optimizer:
+        has_fused = _adamw_has_fused()
+        if has_fused:
+            return optim.AdamW(self.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-9, weight_decay=0.1, fused=True)
+        return optim.AdamW(self.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-9, weight_decay=0.1)
