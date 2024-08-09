@@ -5,7 +5,7 @@ from nanogpt.modules.parallel_multi_head_attention import (AttentionConfig, Para
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, attention_config: AttentionConfig = AttentionConfig(), ff_dims: list[int] = [128, 128]):
+    def __init__(self, attention_config: AttentionConfig = AttentionConfig(), ff_dims: list[int] | None = None):
         super().__init__()
 
         input_dim = attention_config.input_dim
@@ -13,6 +13,8 @@ class TransformerBlock(nn.Module):
         self._layer_norm_projection = nn.LayerNorm(input_dim)
 
         self._mh_att = ParallelMultiHeadAttention.from_config(attention_config, is_causal=False)
+
+        ff_dims = ff_dims or [4 * input_dim, input_dim]
 
         layers = []
         hidden_dim = input_dim
@@ -34,7 +36,7 @@ class TransformerBlock(nn.Module):
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int], num_blocks: int = 3):
+    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int] | None = None, num_blocks: int = 3):
         super().__init__()
 
         self._transformer_blocks = nn.ModuleList([
@@ -48,7 +50,7 @@ class EncoderBlock(nn.Module):
 
 
 class DecoderBlock(nn.Module):
-    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int], num_blocks: int = 3):
+    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int] | None = None, num_blocks: int = 3):
         super().__init__()
 
         masked_blocks = []
@@ -73,12 +75,12 @@ class DecoderBlock(nn.Module):
             x_ = m(x_)
             x_ = x_ + h + x
             x_ = l(x_)
-            x = x_
+            x_ = x_ + x
         return x_
 
 
 class EncoderDecoderBlock(nn.Module):
-    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int], num_blocks: int = 3):
+    def __init__(self, attention_config: AttentionConfig, ff_dims: list[int] | None = None, num_blocks: int = 3):
         super().__init__()
 
         self._encoder = EncoderBlock(attention_config, ff_dims, num_blocks)
@@ -90,4 +92,4 @@ class EncoderDecoderBlock(nn.Module):
                 h: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         h = h or self._encoder(x_input)
         x = self._decoder(x_output, h)
-        return x, h
+        return x, h    # type: ignore

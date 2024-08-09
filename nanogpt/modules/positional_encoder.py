@@ -19,7 +19,8 @@ class PositionalEncoder(nn.Module):
 class VanillaPositionalEncoder(PositionalEncoder):
     def forward(self, idxs: torch.Tensor) -> torch.Tensor:
         # input are the indices for the embedding matrix
-        return idxs / self._seq_len
+        pos = (idxs / self._seq_len).view(self._seq_len, 1)
+        return pos.expand(self._seq_len, self._emb_dim).contiguous()
 
 
 class LearnedPositionalEncoder(PositionalEncoder):

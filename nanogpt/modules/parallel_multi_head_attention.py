@@ -36,9 +36,14 @@ class AttentionConfig:
     dropout: float = 0.2
     """Single dropout value used for attention layers, after the softmax and after the projection layer."""
     @classmethod
+    def make_local(cls) -> "AttentionConfig":
+        """Create a small config for local use. Taken from nanogpt's local BabyGPT."""
+        return cls(128, 32, 64, 4, 0.2)
+
+    @classmethod
     def make_smoke(cls) -> "AttentionConfig":
-        """Create a smoke test configuration. Taken from nanogpt's BabyGPT."""
-        return cls(2304, 384, 256, 6, 0.2)
+        """Create a smoke test configuration."""
+        return cls(8, 4, 16, 2, 0.2)
 
 
 class ParallelMultiHeadAttention(nn.Module):

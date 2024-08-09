@@ -8,6 +8,9 @@ from transformers.tokenization_utils_base import BatchEncoding
 
 
 class BaseTokenizer:
+    def __init__(self):
+        self.pad_token_id: int | None = None
+
     @abstractmethod
     def encode(self, text: str):
         raise NotImplementedError
@@ -17,28 +20,12 @@ class BaseTokenizer:
         raise NotImplementedError
 
 
-class TikTokenizer(BaseTokenizer):
-    def __init__(self, encoding: str):
-        self._check_encoding_is_valid(encoding)
-        self._tokenizer = tiktoken.get_encoding(encoding)
-
-    def _check_encoding_is_valid(self, encoding: str):
-        encodings = tiktoken.list_encoding_names()
-        if encoding not in encodings:
-            raise ValueError(f"Could not find {encoding} in TikToken encodings, should be one of: {encodings}")
-
-    def encode(self, text: str) -> dict[str, torch.Tensor]:
-        tokens = torch.tensor(self._tokenizer.encode(text), dtype=torch.long)
-        return {"tokens": tokens}
-
-    def decode(self, tokens: torch.Tensor) -> str:
-        token_list = tokens.tolist()
-        return self._tokenizer.decode(token_list)
-
-
 class HuggingFaceTokenizer(BaseTokenizer):
     def __init__(self, tokenizer_name: str):
         self._tokenizer = self._make_tokenizer_from_name(tokenizer_name)
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.add_special_tokens({"pad_token": "<pad>"})
+        self.pad_token_id = self._tokenizer.pad_token_id
 
     def _make_tokenizer_from_name(self, tokenizer_name: str) -> PreTrainedTokenizer:
         try:
@@ -49,8 +36,6 @@ class HuggingFaceTokenizer(BaseTokenizer):
             )
 
     def encode(self, text: str) -> BatchEncoding:
-        if self._tokenizer.pad_token is None:
-            self._tokenizer.add_special_tokens({"pad_token": "<pad>"})
         return self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
 
     def decode(self, tokens: torch.Tensor) -> str:

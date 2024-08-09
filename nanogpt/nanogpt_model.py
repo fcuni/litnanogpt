@@ -11,8 +11,7 @@ from torch import nn
 from nanogpt.modules.parallel_multi_head_attention import AttentionConfig
 from nanogpt.modules.positional_encoder import (PositionalEncoder, VanillaPositionalEncoder)
 from nanogpt.modules.transformer_block import DecoderBlock
-
-INPUT_BATCH = tuple[torch.Tensor, torch.Tensor]    # the tuple (input, labels)
+from nanogpt.training.dataloader_fn import InputBatch
 
 
 def _adamw_has_fused() -> bool:
@@ -23,7 +22,7 @@ def _adamw_has_fused() -> bool:
 @dataclass
 class NanoGPTConfig:
     attention_config: AttentionConfig = field(default_factory=AttentionConfig)
-    ff_dims: list[int, ...] = field(default_factory=lambda: [128, 128])
+    ff_dims: list[int] | None = None
     num_blocks: int = 3
     vocabulary_size: int = 50304    # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
     positional_encoder: Callable[[int, int], PositionalEncoder] = VanillaPositionalEncoder
@@ -32,8 +31,13 @@ class NanoGPTConfig:
     def make_smoke(cls) -> "NanoGPTConfig":
         """Create a smoke test configuration. Taken from nanogpt's BabyGPT."""
         smoke_att_config = AttentionConfig.make_smoke()
-        ff_h_dim = [smoke_att_config.input_dim * 4, smoke_att_config.input_dim]
-        return cls(smoke_att_config, ff_h_dim, 6)
+        return cls(smoke_att_config, None, 1)
+
+    @classmethod
+    def make_local(cls) -> "NanoGPTConfig":
+        """Create a small config for local use. Taken from nanogpt's local BabyGPT."""
+        local_att_config = AttentionConfig.make_local()
+        return cls(local_att_config, None, 4)
 
 
 class NanoGPT(pl.LightningModule):
@@ -71,13 +75,14 @@ class NanoGPT(pl.LightningModule):
 
         return logits
 
-    def training_step(self, batch: INPUT_BATCH, batch_idx: int, step_type: str = "train"):
+    def training_step(self, batch: InputBatch, batch_idx: int, step_type: str = "train"):
         # input at this point is a torch tensor of size [B, L], where each scalar doublet (b,l) corresponds to a token
         # index in the vocab, i.e. words have been tokenised and the output is some tensor
         # [[token_at_0, token_at_1, token_at_L], ...]
-        x, labels = batch
+        x = batch["input"]
+        labels = batch["labels"]
         preds = self(x)
-        loss = F.cross_entropy(preds, labels)
+        loss = F.cross_entropy(preds.view(-1, preds.size(-1)), labels.view(-1, preds.size(-1)))
         metric_name = f"{step_type}/loss"
         if step_type == "test":
             return preds
@@ -85,10 +90,10 @@ class NanoGPT(pl.LightningModule):
         self.log_dict({metric_name: loss}, logger=True, on_step=is_on_step, on_epoch=True)
         return loss
 
-    def validation_step(self, batch: INPUT_BATCH, batch_idx: int):
+    def validation_step(self, batch: InputBatch, batch_idx: int):
         return self.training_step(batch, batch_idx, step_type="valid")
 
-    def test_step(self, batch: INPUT_BATCH, batch_idx: int):
+    def test_step(self, batch: InputBatch, batch_idx: int):
         return self.training_step(batch, batch_idx, step_type="test")
 
     def predict_step(

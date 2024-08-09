@@ -1,16 +1,17 @@
 import os
 from dataclasses import dataclass
-from typing import cast
-from urllib.parse import urlparse
+from typing import Callable
 
 import lightning as pl
 from datasets import Dataset, DatasetDict, load_dataset, load_dataset_builder
 from torch.utils.data import DataLoader, TensorDataset
-from transformers import data
 
+from nanogpt.training.dataloader_fn import InputBatch, InputTokenized
 from nanogpt.training.tokenizer import BaseTokenizer
 
-N_WORKERS = os.cpu_count() // 2    # Number of cpus to use for data loading
+# Number of cpus to use for data loading
+N_WORKERS = os.cpu_count() // 2    # type: ignore
+MakeBatchesFn = Callable[[InputTokenized], InputBatch]
 
 
 @dataclass
@@ -31,14 +32,18 @@ class HFDatasetSpec:
     """Fraction of the training data to use for testing if no validation split is provided."""
     test_split: float = 0.1
     """Fraction of the training data to use for testing if no test split is provided."""
+    trust_remote_code: bool = False
+    """Whether to trust remote code. If False and the dataset requires code execution, the instation will fail."""
 
 
 class HFDataModule(pl.LightningDataModule):
     def __init__(
         self,
         batch_size: int,
+        block_size: int,
         tokenizer: BaseTokenizer,
         dataset_spec: HFDatasetSpec,
+        make_batches_fn: MakeBatchesFn,
         data_dir: str = "data",
         seed: int = 42,
     ):
@@ -49,13 +54,21 @@ class HFDataModule(pl.LightningDataModule):
         self._dataset_name = dataset_spec.dataset_name
         self._dataset_path = f"{self._data_dir}/{self._dataset_name}"
         self._dataset_spec = dataset_spec
+        self._make_batches_fn = make_batches_fn
         self._seed = seed
         self._check_dataset_can_load()
+
+        # predefine the train, validation and test datasets
+        self.train_data: Dataset | None = None
+        self.valid_data: Dataset | None = None
+        self.test_data: Dataset | None = None
 
     def _check_dataset_can_load(self):
         print(f"Checking if dataset {self._dataset_name} can be loaded...")
         try:
-            load_dataset_builder(self._dataset_name)    # type: ignore
+            load_dataset_builder(
+                self._dataset_name, trust_remote_code=self._dataset_spec.trust_remote_code
+            )    # type: ignore
         except ValueError as e:
             raise ValueError(f"Could not find dataset {self._dataset_name} in HF datasets. {e}")
         print("Checks passed...")
@@ -71,20 +84,34 @@ class HFDataModule(pl.LightningDataModule):
         is_empty_dir = len(os.listdir(self._dataset_path)) == 0
         if is_empty_dir:
             print(f"Downloading dataset {self._dataset_name} to {self._dataset_path}...")
-            load_dataset(self._dataset_name, num_proc=N_WORKERS, cache_dir=self._dataset_path)
+            load_dataset(
+                self._dataset_name,
+                num_proc=N_WORKERS,
+                cache_dir=self._dataset_path,
+                trust_remote_code=self._dataset_spec.trust_remote_code
+            )
+
         else:
             print(f"Dataset {self._dataset_name} already exists at {self._dataset_path}, not redownloading.")
 
     def _tokenize(self, text_batch: dict):
         feature_name = self._dataset_spec.feature_name or list(text_batch.keys())[0]
         text = text_batch if isinstance(text_batch, str) else text_batch[feature_name]
-        return self._tokenizer.encode(text)
+        encoded_text = self._tokenizer.encode(text)
+        return self._make_batches_fn(encoded_text)
 
     def setup(self, stage: str | None = None):
-        dataset: DatasetDict = load_dataset(self._dataset_name, num_proc=N_WORKERS, cache_dir=self._dataset_path)
+        dataset: DatasetDict = load_dataset(
+            self._dataset_name,
+            num_proc=N_WORKERS,
+            cache_dir=self._dataset_path,
+            trust_remote_code=self._dataset_spec.trust_remote_code
+        )    # type: ignore
         train_data = dataset[self._dataset_spec.train_split_label]
 
         def _map(data: Dataset):
+            # map into torch tensors of max len block_size and pad if necessary
+            # return type is an iterator with InputBatch dicts
             return data.map(self._tokenize, batched=True, batch_size=None)
 
         if stage == "fit" or not stage:
@@ -127,35 +154,22 @@ class HFDataModule(pl.LightningDataModule):
             dataset,    # type: ignore
             batch_size=self._batch_size,
             num_workers=N_WORKERS,
-            shuffle=shuffle
+            shuffle=shuffle,
         )
 
     def train_dataloader(self) -> DataLoader:
+        assert self.train_data is not None, "Data not loaded. Call `setup` first."
         return self._build_dataloader(self.train_data)
 
     def val_dataloader(self) -> DataLoader:
-        return self._build_dataloader(self.valid_data)
+        assert self.valid_data is not None, "Data not loaded. Call `setup` first."
+        return self._build_dataloader(self.valid_data, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
+        assert self.test_data is not None, "Data not loaded. Call `setup` first."
         return self._build_dataloader(self.test_data, shuffle=False)
 
     def make_prediction_dataloader(self, text: str) -> DataLoader:
         tokenized_text = self._tokenizer.encode(text)
         dataset = TensorDataset(tokenized_text)
         return DataLoader(dataset, batch_size=1, num_workers=1)
-
-
-if __name__ == "__main__":
-    from nanogpt.training.tokenizer import HuggingFaceTokenizer
-    dataset_spec = HFDatasetSpec(
-        dataset_name="stas/openwebtext-10k", feature_name="text", valid_split_label=None, test_split_label=None
-    )
-    datamodule = HFDataModule(
-        batch_size=64, tokenizer=HuggingFaceTokenizer(tokenizer_name="gpt2"), dataset_spec=dataset_spec
-    )
-    datamodule.prepare_data()
-    datamodule.setup("test")
-
-    train_loader = datamodule.train_dataloader()
-    print(next(iter(train_loader)))
-    __import__('pdb').set_trace()
