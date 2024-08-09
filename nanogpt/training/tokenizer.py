@@ -10,6 +10,7 @@ from transformers.tokenization_utils_base import BatchEncoding
 class BaseTokenizer:
     def __init__(self):
         self.pad_token_id: int | None = None
+        self.vocab_size: int | None = None
 
     @abstractmethod
     def encode(self, text: str):
@@ -26,6 +27,7 @@ class HuggingFaceTokenizer(BaseTokenizer):
         if self._tokenizer.pad_token is None:
             self._tokenizer.add_special_tokens({"pad_token": "<pad>"})
         self.pad_token_id = self._tokenizer.pad_token_id
+        self.vocab_size = self._tokenizer.vocab_size
 
     def _make_tokenizer_from_name(self, tokenizer_name: str) -> PreTrainedTokenizer:
         try:

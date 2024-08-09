@@ -22,6 +22,8 @@ if __name__ == "__main__":
     dataset_spec = HFDatasetSpec(dataset_name="karpathy/tiny_shakespeare", feature_name="text", trust_remote_code=True)
 
     tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    vocab_size = tokenizer.vocab_size
+    smoke_config.vocabulary_size = vocab_size or smoke_config.vocabulary_size
 
     make_batches_fn = make_batches_fn(
         block_size=smoke_config.attention_config.sequence_length,
