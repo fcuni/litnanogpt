@@ -7,7 +7,7 @@ def get_tiny_shakespeare_spec() -> HFDatasetSpec:
 
 def get_openwebtxt_10k_spec() -> HFDatasetSpec:
     return HFDatasetSpec(
-        dataset_name="stas/openwebtxt-10k",
+        dataset_name="stas/openwebtext-10k",
         feature_name="text",
         valid_split_label=None,
         test_split_label=None,
