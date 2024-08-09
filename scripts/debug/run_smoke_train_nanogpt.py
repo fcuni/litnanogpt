@@ -37,12 +37,13 @@ if __name__ == "__main__":
         make_batches_fn=make_batches_fn
     )
 
-    logger = WandbLogger(project="nanogpt", mode="disabled") if _use_wandb() else TensorBoardLogger("lightning_logs")
+    logger = WandbLogger(project="nanogpt", mode="online") if _use_wandb() else TensorBoardLogger("lightning_logs")
 
     trainer = pl.Trainer(
         max_epochs=10,
         log_every_n_steps=1,
         logger=logger,
         precision="16-mixed",
+        enable_checkpointing=False,
     )
     trainer.fit(model, datamodule=data)

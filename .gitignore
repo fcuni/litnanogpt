@@ -180,3 +180,8 @@ data
 # Ignore wandb files
 wandb/
 **/wandb/
+
+# Ignore lightning files
+**/lightning_logs/
+**/checkpoints/
+
