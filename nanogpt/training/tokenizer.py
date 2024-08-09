@@ -27,7 +27,7 @@ class HuggingFaceTokenizer(BaseTokenizer):
         if self._tokenizer.pad_token is None:
             self._tokenizer.add_special_tokens({"pad_token": "<pad>"})
         self.pad_token_id = self._tokenizer.pad_token_id
-        self.vocab_size = self._tokenizer.vocab_size
+        self.vocab_size = len(self._tokenizer)
 
     def _make_tokenizer_from_name(self, tokenizer_name: str) -> PreTrainedTokenizer:
         try:
