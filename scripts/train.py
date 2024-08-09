@@ -26,18 +26,10 @@ if __name__ == "__main__":
     conf.vocabulary_size = vocab_size or conf.vocabulary_size
 
     make_batches_fn = make_batches_fn(
-        block_size=conf.attention_config.sequence_length,
-        vocab_size=conf.vocabulary_size,
-        pad_token=tokenizer.pad_token_id
+        block_size=conf.attention_config.sequence_length, pad_token=tokenizer.pad_token_id
     )
 
-    data = HFDataModule(
-        batch_size=64,
-        block_size=conf.attention_config.sequence_length,
-        tokenizer=tokenizer,
-        dataset_spec=dataset_spec,
-        make_batches_fn=make_batches_fn
-    )
+    data = HFDataModule(batch_size=64, tokenizer=tokenizer, dataset_spec=dataset_spec, make_batches_fn=make_batches_fn)
 
     model = NanoGPT(config=conf)
     if _use_wandb():
