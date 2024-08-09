@@ -15,9 +15,7 @@ class InputBatch(TypedDict):
     attention_mask: NotRequired[torch.Tensor]
 
 
-def make_batches_fn(block_size: int,
-                    vocab_size: int,
-                    pad_token: int | None = None) -> Callable[[InputTokenized], InputBatch]:
+def make_batches_fn(block_size: int, pad_token: int | None = None) -> Callable[[InputTokenized], InputBatch]:
     pad_token = pad_token or -1
 
     def _make_batches(encoding: InputTokenized) -> InputBatch:
@@ -25,7 +23,6 @@ def make_batches_fn(block_size: int,
         seq_len = input_.size(1)
         pad_last_position = torch.tensor([pad_token]).expand(input_.size(0), 1)
         labels = torch.cat([input_[:, 1:], pad_last_position], dim=1)
-        # labels_one_hot = torch.nn.functional.one_hot(labels, num_classes=vocab_size).float()
 
         if encoding.get("attention_mask") is not None:
             attention_mask = encoding["attention_mask"]    # type: ignore
@@ -34,7 +31,6 @@ def make_batches_fn(block_size: int,
 
         if seq_len > block_size:
             input_ = input_[:, :block_size]
-            # labels_one_hot = labels_one_hot[:, :block_size]
             labels = labels[:, :block_size]
             attention_mask = attention_mask[:, :block_size]
 

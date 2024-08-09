@@ -26,13 +26,11 @@ if __name__ == "__main__":
 
     make_batches_fn = make_batches_fn(
         block_size=smoke_config.attention_config.sequence_length,
-        vocab_size=smoke_config.vocabulary_size,
         pad_token=tokenizer.pad_token_id
     )
 
     data = HFDataModule(
         batch_size=64,
-        block_size=smoke_config.attention_config.sequence_length,
         tokenizer=tokenizer,
         dataset_spec=dataset_spec,
         make_batches_fn=make_batches_fn

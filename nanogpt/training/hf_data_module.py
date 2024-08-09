@@ -40,7 +40,6 @@ class HFDataModule(pl.LightningDataModule):
     def __init__(
         self,
         batch_size: int,
-        block_size: int,
         tokenizer: BaseTokenizer,
         dataset_spec: HFDatasetSpec,
         make_batches_fn: MakeBatchesFn,
