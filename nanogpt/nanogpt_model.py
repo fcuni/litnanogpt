@@ -57,6 +57,7 @@ class NanoGPT(pl.LightningModule):
 
         # weight tying, see https://paperswithcode.com/method/weight-tying
         self.vocab_encoder.weight = self.linear_project.weight
+        self.save_hyperparameters()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # expected input shape is [B, L]
@@ -101,6 +102,7 @@ class NanoGPT(pl.LightningModule):
     ) -> torch.Tensor:
         """Taken from the nanogpt, see `generate` in nanoGPT/model.py"""
         # expected input dims are [B, L], corresponding to b sentences of each length L tokens
+        batch = batch.to(self.device)
         for _ in range(max_tokens):
             context_window = batch if batch.shape[-1] <= self._block_length else batch[:, -self._block_length:]
 

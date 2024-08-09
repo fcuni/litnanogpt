@@ -17,7 +17,7 @@ class BaseTokenizer:
         raise NotImplementedError
 
     @abstractmethod
-    def decode(self, tokens: torch.Tensor) -> str:
+    def decode(self, tokens: torch.Tensor) -> list[str]:
         raise NotImplementedError
 
 
@@ -40,8 +40,11 @@ class HuggingFaceTokenizer(BaseTokenizer):
     def encode(self, text: str) -> BatchEncoding:
         return self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
 
-    def decode(self, tokens: torch.Tensor) -> str:
-        return self._tokenizer.decode(tokens, skip_special_tokens=True)
+    def decode(self, tokens: torch.Tensor) -> list[str]:
+        sentences = []
+        for i in range(tokens.size(0)):
+            sentences += [self._tokenizer.decode(tokens[i, :], skip_special_tokens=True)]
+        return sentences
 
 
 class LlamaTokenizer(BaseTokenizer):

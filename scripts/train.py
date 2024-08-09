@@ -40,10 +40,11 @@ if __name__ == "__main__":
     callbacks = [ModelCheckpoint(monitor="valid/loss", save_top_k=1, mode="min")]
 
     trainer = pl.Trainer(
-        max_epochs=10,
+        max_epochs=100,
         log_every_n_steps=1,
         logger=logger,
         precision="16-mixed",
         callbacks=callbacks,    # type: ignore
+        default_root_dir="checkpoints",
     )
     trainer.fit(model, datamodule=data)
