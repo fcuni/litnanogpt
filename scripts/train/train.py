@@ -1,6 +1,6 @@
 import lightning as pl
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
-from sklearn.utils import validation
 
 from nanogpt.nanogpt_model import NanoGPT, NanoGPTConfig
 from nanogpt.presets.preset_dataset_spec import get_openwebtxt_10k_spec
@@ -39,14 +39,19 @@ if __name__ == "__main__":
         make_batches_fn=make_batches_fn
     )
 
-    logger = WandbLogger(project="nanogpt", mode="online") if _use_wandb() else TensorBoardLogger("lightning_logs")
-
     model = NanoGPT(config=conf)
+    if _use_wandb():
+        logger = WandbLogger(project="nanogpt", mode="online", save_code=True, log_model=True)
+        logger.watch(model, log="all")
+    else:
+        logger = TensorBoardLogger("lightning_logs")
+    callbacks = [ModelCheckpoint(monitor="valid/loss", save_top_k=1, mode="min")]
+
     trainer = pl.Trainer(
         max_epochs=10,
         log_every_n_steps=1,
         logger=logger,
         precision="16-mixed",
-        enable_checkpointing=False,
+        callbacks=callbacks,    # type: ignore
     )
     trainer.fit(model, datamodule=data)
