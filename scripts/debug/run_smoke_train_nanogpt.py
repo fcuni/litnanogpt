@@ -4,7 +4,7 @@ from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from nanogpt.nanogpt_model import NanoGPT, NanoGPTConfig
 from nanogpt.presets.preset_dataset_spec import get_tiny_shakespeare_spec
 from nanogpt.training.dataloader_fn import make_batches_fn
-from nanogpt.training.hf_data_module import HFDataModule
+from nanogpt.training.datamodules.hf_data_module import HFDataModule
 from nanogpt.training.tokenizer import HuggingFaceTokenizer
 
 

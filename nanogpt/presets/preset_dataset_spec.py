@@ -1,4 +1,4 @@
-from nanogpt.training.hf_data_module import HFDatasetSpec
+from nanogpt.training.datamodules.datamodules_utils import HFDatasetSpec
 
 
 def get_tiny_shakespeare_spec() -> HFDatasetSpec:
