@@ -19,6 +19,8 @@ class PositionalEncoder(nn.Module):
 class VanillaPositionalEncoder(PositionalEncoder):
     def forward(self, idxs: torch.Tensor) -> torch.Tensor:
         # input are the indices for the embedding matrix
+        assert idxs.ndim == 1, \
+        f"Expected a single dimension for the input tensor, representing the indices in the embedding, but got {idxs}"
         pos = (idxs / self._seq_len).view(idxs.size(0), 1)
         return pos.expand(idxs.size(0), self._emb_dim).contiguous()
 
