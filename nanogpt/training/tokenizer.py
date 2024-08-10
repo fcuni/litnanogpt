@@ -1,6 +1,5 @@
 from abc import abstractmethod
 
-import tiktoken
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizer
 from transformers.models.auto.tokenization_auto import TOKENIZER_MAPPING_NAMES
@@ -47,6 +46,43 @@ class HuggingFaceTokenizer(BaseTokenizer):
         return sentences
 
 
-class LlamaTokenizer(BaseTokenizer):
-    # TODO: Add tokenizer for Llama models
-    ...
+class CharTokenizer(BaseTokenizer):
+    """Tokenizer that encodes text as ASCII characters. Very simple and not recommended for real use."""
+    def __init__(self, seq_len: int, vocab_size: int = 256):
+        self.vocab_size = vocab_size
+        self.pad_token_id = vocab_size
+        self.oov_token = vocab_size + 1
+        self.seq_len = seq_len
+
+    def _pad_or_truncate(self, tokens: torch.Tensor) -> torch.Tensor:
+        assert tokens.ndim == 1, f"Tokens must be 1D, got {tokens.shape}"
+        tokens_len = tokens.size(0)
+        if tokens_len < self.seq_len:
+            pad_len = self.seq_len - len(tokens)
+            padding = torch.tensor([self.pad_token_id] * pad_len)
+            tokens = torch.cat([tokens, padding])
+        elif tokens_len > self.seq_len:
+            tokens = tokens[-self.seq_len:]
+        return tokens
+
+    def encode(self, text: str):
+        tokens = torch.tensor([ord(c) for c in text])
+        mask_ = torch.ones_like(tokens)
+        mask_[tokens >= self.vocab_size] = 0
+        tokens[mask_ == 0] = self.oov_token
+        tokens = self._pad_or_truncate(tokens)
+        return tokens.unsqueeze(0)
+
+    def decode(self, tokens: torch.Tensor) -> list[str]:
+        sentences = []
+        for i in range(tokens.size(0)):
+            s = ""
+            for c in tokens[i, :]:
+                if c == self.pad_token_id:
+                    break
+                elif c == self.oov_token:
+                    s += "<unk>"
+                else:
+                    s += chr(int(c))
+            sentences.append(s)
+        return sentences
