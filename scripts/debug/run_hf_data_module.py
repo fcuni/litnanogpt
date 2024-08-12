@@ -1,16 +1,17 @@
-from nanogpt.training.dataloader_fn import make_batches_fn
-from nanogpt.training.datamodules.datamodules_utils import HFDatasetSpec
+from nanogpt.presets.preset_dataset_spec import get_spec_by_name
+from nanogpt.training.dataloader_fn import (
+    default_make_batches_fn,
+    make_batches_for_char_tokenizer,
+)
 from nanogpt.training.datamodules.hf_data_module import HFDataModule
 from nanogpt.training.tokenizer import CharTokenizer, HuggingFaceTokenizer
 
 if __name__ == "__main__":
-    dataset_spec = HFDatasetSpec(
-        dataset_name="stas/openwebtext-10k", feature_name="text", valid_split_label=None, test_split_label=None
-    )
-    # tokenizer = CharTokenizer(seq_len=16)
-    tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    dataset_spec = get_spec_by_name("tiny_shakespeare")
+    tokenizer = CharTokenizer(seq_len=16)
+    # tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
 
-    make_batches_fn = make_batches_fn(block_size=16, pad_token=-1)
+    make_batches_fn = make_batches_for_char_tokenizer(block_size=tokenizer.seq_len, pad_token=tokenizer.pad_token_id)
     datamodule = HFDataModule(
         batch_size=64,
         tokenizer=tokenizer,
@@ -18,7 +19,8 @@ if __name__ == "__main__":
         make_batches_fn=make_batches_fn,
     )
     datamodule.prepare_data()
-    datamodule.setup("test")
+    datamodule.setup("fit")
 
-    train_loader = datamodule.test_dataloader()
+    train_loader = datamodule.train_dataloader()
+    sample = next(iter(train_loader))
     print(next(iter(train_loader)))
