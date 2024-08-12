@@ -1,8 +1,8 @@
 import os
+from typing import cast
 
 import lightning as pl
 from datasets import Dataset, DatasetDict, load_dataset, load_dataset_builder
-from torch.utils.data import DataLoader, TensorDataset
 
 from nanogpt.training.datamodules.base_data_module import BaseNLPDataModule
 from nanogpt.training.datamodules.datamodules_utils import (N_WORKERS, HFDatasetSpec, MakeBatchesFn)
@@ -63,7 +63,8 @@ class HFDataModule(BaseNLPDataModule):
 
     def _tokenize(self, text_batch: dict):
         feature_name = self._dataset_spec.feature_name or list(text_batch.keys())[0]
-        text = text_batch if isinstance(text_batch, str) else text_batch[feature_name]
+        text = [text_batch] if isinstance(text_batch, str) else text_batch[feature_name]
+        text = cast(list[str], text)
         encoded_text = self._tokenizer.encode(text)
         return self._make_batches_fn(encoded_text)
 

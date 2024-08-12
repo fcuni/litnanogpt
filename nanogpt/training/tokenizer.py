@@ -5,6 +5,8 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from transformers.models.auto.tokenization_auto import TOKENIZER_MAPPING_NAMES
 from transformers.tokenization_utils_base import BatchEncoding
 
+from nanogpt.training.dataloader_fn import InputTokenized
+
 
 class BaseTokenizer:
     def __init__(self, pad_token_id: int | None = None, vocab_size: int | None = None):
@@ -12,7 +14,7 @@ class BaseTokenizer:
         self.vocab_size = vocab_size
 
     @abstractmethod
-    def encode(self, text: str):
+    def encode(self, text: list[str]):
         raise NotImplementedError
 
     @abstractmethod
@@ -35,7 +37,7 @@ class HuggingFaceTokenizer(BaseTokenizer):
                 f"Could not find tokenizer {tokenizer_name} in HF models. Try one of \n {TOKENIZER_MAPPING_NAMES} \n{e}"
             )
 
-    def encode(self, text: str) -> BatchEncoding:
+    def encode(self, text: list[str]) -> BatchEncoding:
         return self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
 
     def decode(self, tokens: torch.Tensor) -> list[str]:
@@ -53,6 +55,8 @@ class CharTokenizer(BaseTokenizer):
         super().__init__(pad_token_id=vocab_size, vocab_size=vocab_size)
         self.oov_token = vocab_size + 1
         self.seq_len = seq_len
+        # make space for oov and padding tokens
+        self.vocab_size = vocab_size + 2
 
     def _pad_or_truncate(self, tokens: torch.Tensor) -> torch.Tensor:
         assert tokens.ndim == 1, f"Tokens must be 1D, got {tokens.shape}"
@@ -65,13 +69,16 @@ class CharTokenizer(BaseTokenizer):
             tokens = tokens[-self.seq_len:]
         return tokens
 
-    def encode(self, text: str):
-        tokens = torch.tensor([ord(c) for c in text])
+    def encode(self, text: list[str]) -> InputTokenized:
+        tokens = []
+        for s in text:
+            tokens.append(self._pad_or_truncate(torch.tensor([ord(c) for c in s])))
+        tokens = torch.stack(tokens)
         mask_ = torch.ones_like(tokens)
         mask_[tokens >= self.vocab_size] = 0
         tokens[mask_ == 0] = self.oov_token
-        tokens = self._pad_or_truncate(tokens)
-        return tokens.unsqueeze(0)
+        input_batch = InputTokenized(text=text, input_ids=tokens)
+        return input_batch
 
     def decode(self, tokens: torch.Tensor) -> list[str]:
         sentences = []

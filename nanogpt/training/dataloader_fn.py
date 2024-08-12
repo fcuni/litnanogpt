@@ -4,7 +4,7 @@ import torch
 
 
 class InputTokenized(TypedDict):
-    text: str
+    text: str | list[str]    # Double check this, it migth only ever be a list
     input_ids: torch.Tensor
     attention_mask: NotRequired[torch.Tensor]
 

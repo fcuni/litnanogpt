@@ -83,6 +83,7 @@ class NanoGPT(pl.LightningModule):
         x = batch["input"]
         labels = batch["labels"]
         preds = self(x)
+
         loss = F.cross_entropy(preds.view(-1, preds.size(-1)), labels.view(-1))
         metric_name = f"{step_type}/loss"
         if step_type == "test":

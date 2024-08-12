@@ -5,7 +5,7 @@ from nanogpt.nanogpt_model import NanoGPT, NanoGPTConfig
 from nanogpt.presets.preset_dataset_spec import get_tiny_shakespeare_spec
 from nanogpt.training.dataloader_fn import make_batches_fn
 from nanogpt.training.datamodules.hf_data_module import HFDataModule
-from nanogpt.training.tokenizer import HuggingFaceTokenizer
+from nanogpt.training.tokenizer import CharTokenizer, HuggingFaceTokenizer
 
 
 def _use_wandb() -> bool:
@@ -18,7 +18,8 @@ def _use_wandb() -> bool:
 
 if __name__ == "__main__":
     dataset_spec = get_tiny_shakespeare_spec()
-    tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    # tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    tokenizer = CharTokenizer(seq_len=16)
 
     smoke_config = NanoGPTConfig.make_smoke()
     vocab_size = tokenizer.vocab_size
@@ -39,5 +40,6 @@ if __name__ == "__main__":
         logger=logger,
         precision="16-mixed",
         enable_checkpointing=False,
+        accelerator="cpu"
     )
     trainer.fit(model, datamodule=data)
