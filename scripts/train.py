@@ -5,7 +5,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 
 from nanogpt.nanogpt_model import NanoGPT, NanoGPTConfig
-from nanogpt.presets.preset_dataset_spec import get_openwebtxt_10k_spec
+from nanogpt.presets.preset_dataset_spec import get_spec_by_name
 from nanogpt.training.dataloader_fn import make_batches_fn
 from nanogpt.training.datamodules.hf_data_module import HFDataModule
 from nanogpt.training.tokenizer import CharTokenizer, HuggingFaceTokenizer
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    dataset_spec = get_openwebtxt_10k_spec()
+    dataset_spec = get_spec_by_name(args.dataset)
     if args.tokenizer == "char":
         tokenizer = CharTokenizer(seq_len=args.seq_len)
     else:
