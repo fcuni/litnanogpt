@@ -5,7 +5,11 @@ import lightning as pl
 from datasets import Dataset, DatasetDict, load_dataset, load_dataset_builder
 
 from nanogpt.training.datamodules.base_data_module import BaseNLPDataModule
-from nanogpt.training.datamodules.datamodules_utils import (N_WORKERS, HFDatasetSpec, MakeBatchesFn)
+from nanogpt.training.datamodules.datamodules_utils import (
+    N_WORKERS,
+    HFDatasetSpec,
+    MakeBatchesFn,
+)
 from nanogpt.training.tokenizer import BaseTokenizer
 
 
@@ -66,7 +70,8 @@ class HFDataModule(BaseNLPDataModule):
         text = [text_batch] if isinstance(text_batch, str) else text_batch[feature_name]
         text = cast(list[str], text)
         encoded_text = self._tokenizer.encode(text)
-        return self._make_batches_fn(encoded_text)
+        batches = self._make_batches_fn(encoded_text)
+        return batches
 
     def setup(self, stage: str | None = None):
         dataset: DatasetDict = load_dataset(
@@ -80,7 +85,7 @@ class HFDataModule(BaseNLPDataModule):
         def _map(data: Dataset):
             # map into torch tensors of max len block_size and pad if necessary
             # return type is an iterator with InputBatch dicts
-            return data.map(self._tokenize, batched=True, batch_size=None)
+            return data.map(self._tokenize, batched=True, batch_size=None, remove_columns=data.column_names)
 
         if stage == "fit" or not stage:
             has_valid = self._dataset_spec.valid_split_label is not None

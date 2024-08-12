@@ -58,22 +58,19 @@ class CharTokenizer(BaseTokenizer):
         # make space for oov and padding tokens
         self.vocab_size = vocab_size + 2
 
-    def _pad_or_truncate(self, tokens: torch.Tensor) -> torch.Tensor:
+    def _pad_if_needed(self, tokens: torch.Tensor) -> torch.Tensor:
         assert tokens.ndim == 1, f"Tokens must be 1D, got {tokens.shape}"
-        tokens_len = tokens.size(0)
-        if tokens_len < self.seq_len:
-            pad_len = self.seq_len - len(tokens)
-            padding = torch.tensor([self.pad_token_id] * pad_len)
-            tokens = torch.cat([tokens, padding])
-        elif tokens_len > self.seq_len:
-            tokens = tokens[-self.seq_len:]
+
+        pad_len = self.seq_len - len(tokens) % self.seq_len if len(tokens) % self.seq_len != 0 else 0
+
+        tokens = torch.cat([tokens, torch.tensor([self.pad_token_id] * pad_len)])
         return tokens
 
     def encode(self, text: list[str]) -> InputTokenized:
         tokens = []
         for s in text:
-            tokens.append(self._pad_or_truncate(torch.tensor([ord(c) for c in s])))
-        tokens = torch.stack(tokens)
+            tokens.append(self._pad_if_needed(torch.tensor([ord(c) for c in s])))
+        tokens = torch.cat(tokens, dim=0).unsqueeze(0)
         mask_ = torch.ones_like(tokens)
         mask_[tokens >= self.vocab_size] = 0
         tokens[mask_ == 0] = self.oov_token
