@@ -1,11 +1,9 @@
-# TODO: write the generate script from a checkpoint
 from argparse import ArgumentParser
-from threading import local
 
 import torch
 
 from nanogpt.nanogpt_model import NanoGPT, NanoGPTConfig
-from nanogpt.training.tokenizer import HuggingFaceTokenizer
+from nanogpt.training.tokenizer import CharTokenizer, HuggingFaceTokenizer
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -27,14 +25,18 @@ if __name__ == "__main__":
     n_tokens = args.max_tokens
 
     print(f"Loading model from checkpoint: {ckpt_path}")
-    tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    #tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
+    tokenizer = CharTokenizer(seq_len=512)
     local_config = NanoGPTConfig.make_local()
     local_config.vocabulary_size = tokenizer.vocab_size or local_config.vocabulary_size
     model = NanoGPT.load_from_checkpoint(checkpoint_path=ckpt_path, config=local_config)
 
-    tokens: torch.Tensor = tokenizer.encode(prompt).get("input_ids")    # type: ignore
+    tokens: torch.Tensor = tokenizer.encode([prompt]).get("input_ids")    # type: ignore
+    tokens = tokens[tokens != tokenizer.pad_token_id].unsqueeze(0)    # type: ignore
+    tokens.to(model.device)
 
     top_k = min(args.top_k, tokenizer.vocab_size)
     out = model.generate(tokens, n_tokens, temperature=args.temperature, top_k=top_k)
+    __import__('pdb').set_trace()
 
     print(tokenizer.decode(out))
