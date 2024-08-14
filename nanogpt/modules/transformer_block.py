@@ -38,11 +38,11 @@ class TransformerBlock(nn.Module):
         x_ = self._mh_att(x_)
 
         x_ = x_ + x    # add residual before ff projection
-        x_ = self._layer_norm_projection(x_)
-        x_ = self._ff_projection(x_)
+        y_ = self._layer_norm_projection(x_)
+        y_ = self._ff_projection(y_)
 
-        # add residual before return to support identity highway
-        return x_ + x
+        # TODO: explore identity highway connection
+        return y_ + x_
 
 
 class EncoderBlock(nn.Module):
@@ -63,10 +63,6 @@ class DecoderBlock(nn.Module):
     def __init__(self, attention_config: AttentionConfig, ff_dims: list[int] | None = None, num_blocks: int = 3):
         super().__init__()
 
-        self._masked_blocks = nn.ModuleList([
-            TransformerBlock(attention_config=attention_config, ff_dims=ff_dims, is_causal=True)
-            for _ in range(num_blocks)
-        ])
         self._transformer_blocks = nn.ModuleList([
             TransformerBlock(attention_config=attention_config, ff_dims=ff_dims, is_causal=True)
             for _ in range(num_blocks)
@@ -74,8 +70,6 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x: torch.Tensor, h: torch.Tensor | None = None) -> torch.Tensor:
         h = h or torch.zeros_like(x)
-        for m, l in zip(self._masked_blocks, self._transformer_blocks):
-            x = m(x)
-            #x = x + h
-            #x = l(x)
+        for t in self._transformer_blocks:
+            x = t(x)
         return x
