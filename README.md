@@ -5,10 +5,15 @@ and that has a clean integration with Hugging Face and Lightning for future flex
 This repository is a work in progress, and I will be updating it as I go along.
 
 - Progress list:
+
 [x] Replicate NanoGPT on `tiny_shakespeare`
+
 [ ] Introduce MoE code
+
 [ ] Implement Llama 2
+
 [ ] Implement Llama 3
+
 
 
 - Resources and references:
