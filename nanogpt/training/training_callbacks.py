@@ -23,3 +23,5 @@ class CosineLRCallback(Callback):
 
         for param_group in trainer.optimizers[0].param_groups:
             param_group["lr"] = lr
+
+        pl_module.log("train/lr", lr, on_step=False, on_epoch=True)

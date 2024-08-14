@@ -9,9 +9,13 @@ import torch.optim as optim
 from torch import nn
 
 from nanogpt.modules.parallel_multi_head_attention import AttentionConfig
-from nanogpt.modules.positional_encoder import (PositionalEncoder, VanillaPositionalEncoder)
+from nanogpt.modules.positional_encoder import (
+    PositionalEncoder,
+    VanillaPositionalEncoder,
+)
 from nanogpt.modules.transformer_block import DecoderBlock
-from nanogpt.training.dataloader_fn import InputBatch
+from nanogpt.training.datamodules.base_data_module import InputBatch
+from nanogpt.training.tokenizer import PADDING_INDEX
 
 
 def _adamw_has_fused() -> bool:
@@ -82,9 +86,12 @@ class NanoGPT(pl.LightningModule):
         # [[token_at_0, token_at_1, token_at_L], ...]
         x = batch["input"]
         labels = batch["labels"]
+        # TODO: support attention masks from HF tokenizers
+        # att_mask = batch["attention_mask"]
+
         preds = self(x)
 
-        loss = F.cross_entropy(preds.view(-1, preds.size(-1)), labels.view(-1))
+        loss = F.cross_entropy(preds.view(-1, preds.size(-1)), labels.view(-1), ignore_index=PADDING_INDEX)
         metric_name = f"{step_type}/loss"
         if step_type == "test":
             return preds
@@ -132,7 +139,4 @@ class NanoGPT(pl.LightningModule):
         return self.predict_step(batch, max_tokens, temperature, top_k)
 
     def configure_optimizers(self) -> optim.Optimizer:
-        has_fused = _adamw_has_fused()
-        if has_fused:
-            return optim.AdamW(self.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-9, weight_decay=0.1, fused=True)
-        return optim.AdamW(self.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-9, weight_decay=0.1)
+        return optim.AdamW(self.parameters(), lr=6e-3, betas=(0.9, 0.95), eps=1e-9, weight_decay=0.1)

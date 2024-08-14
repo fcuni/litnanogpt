@@ -1,17 +1,34 @@
 from abc import abstractmethod
+from typing import TypedDict
 
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizer
 from transformers.models.auto.tokenization_auto import TOKENIZER_MAPPING_NAMES
 from transformers.tokenization_utils_base import BatchEncoding
 
-from nanogpt.training.dataloader_fn import InputTokenized
+PADDING_INDEX = 0
+
+
+class InputTokenized(TypedDict):
+    text: str | list[str]    # Double check this, it migth only ever be a list
+    input_ids: torch.Tensor
+    attention_mask: torch.Tensor
+
+
+class InputBatch(TypedDict):
+    input: torch.Tensor
+    labels: torch.Tensor
+    attention_mask: torch.Tensor
 
 
 class BaseTokenizer:
     def __init__(self, pad_token_id: int | None = None, vocab_size: int | None = None):
         self.pad_token_id = pad_token_id
         self.vocab_size = vocab_size
+
+    @abstractmethod
+    def make_batches(self, encoding: InputTokenized, sequence_length: int) -> InputBatch:
+        raise NotImplementedError
 
     @abstractmethod
     def encode(self, text: list[str]):
@@ -27,6 +44,7 @@ class HuggingFaceTokenizer(BaseTokenizer):
         self._tokenizer = self._make_tokenizer_from_name(tokenizer_name)
         if self._tokenizer.pad_token is None:
             self._tokenizer.add_special_tokens({"pad_token": "<pad>"})
+        self._tokenizer.pad_token_id = PADDING_INDEX
         super().__init__(pad_token_id=self._tokenizer.pad_token_id, vocab_size=len(self._tokenizer))
 
     def _make_tokenizer_from_name(self, tokenizer_name: str) -> PreTrainedTokenizer:
@@ -36,6 +54,21 @@ class HuggingFaceTokenizer(BaseTokenizer):
             raise OSError(
                 f"Could not find tokenizer {tokenizer_name} in HF models. Try one of \n {TOKENIZER_MAPPING_NAMES} \n{e}"
             )
+
+    def make_batches(self, encoding: InputTokenized, sequence_length: int) -> InputBatch:
+        input_ = encoding["input_ids"]
+        seq_len = input_.size(1)
+        pad_last_position = torch.tensor([self.pad_token_id]).expand(input_.size(0), 1)
+        labels = torch.cat([input_[:, 1:], pad_last_position], dim=1)
+        if encoding.get("attention_mask") is not None:
+            attention_mask = encoding["attention_mask"]
+        else:
+            attention_mask = torch.ones_like(input_)
+        if seq_len > sequence_length:
+            input_ = input_[:, :sequence_length]
+            labels = labels[:, :sequence_length]
+            attention_mask = attention_mask[:, :sequence_length]
+        return {"input": input_, "labels": labels, "attention_mask": attention_mask}
 
     def encode(self, text: list[str]) -> BatchEncoding:
         return self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
@@ -50,31 +83,44 @@ class HuggingFaceTokenizer(BaseTokenizer):
 
 
 class CharTokenizer(BaseTokenizer):
-    """Tokenizer that encodes text as ASCII characters. Very simple and not recommended for real use."""
-    def __init__(self, seq_len: int, vocab_size: int = 256):
-        super().__init__(pad_token_id=vocab_size, vocab_size=vocab_size)
-        self.oov_token = vocab_size + 1
-        self.seq_len = seq_len
-        # make space for oov and padding tokens
-        self.vocab_size = vocab_size + 2
+    """Character-level tokenizer that mimicks Karpathy's character tokenizer. Used mostly to check for consistency."""
+    def __init__(self, vocab: dict[str, int] | None = None):
+        self.vocab = vocab or {chr(i): i - 31 for i in range(32, 126)}    # ASCII
+        vocab_size = len(self.vocab)
+        self.special_tokens = {"<unk>": -3, "<eot>": -2, "<pad>": PADDING_INDEX}
+        self.oov_token = self.special_tokens["<unk>"]
+        pad_token_id = self.special_tokens["<pad>"]
+        self.extended_vocab = {**self.vocab, **self.special_tokens}
+        self.inv_extended_vocab = {v: k for k, v in self.extended_vocab.items()}
+        super().__init__(pad_token_id=pad_token_id, vocab_size=vocab_size)
 
-    def _pad_if_needed(self, tokens: torch.Tensor) -> torch.Tensor:
-        assert tokens.ndim == 1, f"Tokens must be 1D, got {tokens.shape}"
+    def make_batches(self, encoding: InputTokenized, sequence_length: int) -> InputBatch:
+        input_ = encoding["input_ids"].squeeze(0)
+        assert input_.dim() == 1, f"Expected input to be a 1D tensor, but got {input_.dim()}"
+        # pad if needed
+        pad_len = sequence_length - input_.size(0) % sequence_length
 
-        pad_len = self.seq_len - len(tokens) % self.seq_len if len(tokens) % self.seq_len != 0 else 0
-
-        tokens = torch.cat([tokens, torch.tensor([self.pad_token_id] * pad_len)])
-        return tokens
+        if pad_len > 0:
+            input_ = torch.cat([input_, torch.tensor([self.pad_token_id] * pad_len)])
+        labels = torch.cat([input_[1:], torch.tensor([self.pad_token_id])]).reshape(-1, sequence_length)
+        input_ = input_.reshape(-1, sequence_length)
+        if encoding.get("attention_mask") is not None:
+            attention_mask = encoding["attention_mask"].squeeze(0)    # type: ignore
+            if pad_len > 0:
+                attention_mask = torch.cat([attention_mask, torch.zeros(pad_len)])
+            attention_mask = attention_mask.reshape(-1, sequence_length)
+        else:
+            attention_mask = torch.ones_like(input_)
+        return {"input": input_, "labels": labels, "attention_mask": attention_mask}
 
     def encode(self, text: list[str]) -> InputTokenized:
-        tokens = []
+        tokens, att_masks = [], []
         for s in text:
-            tokens.append(self._pad_if_needed(torch.tensor([ord(c) for c in s])))
+            t = torch.tensor([self.extended_vocab[c] if c in self.extended_vocab else self.oov_token for c in s])
+            tokens.append(t)
         tokens = torch.cat(tokens, dim=0).unsqueeze(0)
-        mask_ = torch.ones_like(tokens)
-        mask_[tokens >= self.vocab_size] = 0
-        tokens[mask_ == 0] = self.oov_token
-        input_batch = InputTokenized(text=text, input_ids=tokens)
+        att_masks = torch.ones_like(tokens)
+        input_batch = InputTokenized(text=text, input_ids=tokens, attention_mask=att_masks)
         return input_batch
 
     def decode(self, tokens: torch.Tensor) -> list[str]:
@@ -82,11 +128,11 @@ class CharTokenizer(BaseTokenizer):
         for i in range(tokens.size(0)):
             s = ""
             for c in tokens[i, :]:
-                if c == self.pad_token_id:
+                char = self.inv_extended_vocab[c.item()]
+                if char == "<eot>":
                     break
-                elif c == self.oov_token:
-                    s += "<unk>"
-                else:
-                    s += chr(int(c))
+                elif char == "<pad>":
+                    continue
+                s += char
             sentences.append(s)
         return sentences

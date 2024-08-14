@@ -3,17 +3,12 @@ import pytest
 from nanogpt.training.tokenizer import CharTokenizer, HuggingFaceTokenizer
 
 
-@pytest.mark.parametrize("seq_len, vocab_size, phrase", [(5, 256, ["hello"]), (10, 256, ["hello"])])
-def test_char_tokenizer_returns_single_character_tokens(seq_len, vocab_size, phrase):
-    tokenizer = CharTokenizer(seq_len=seq_len, vocab_size=vocab_size)
+@pytest.mark.parametrize("phrase", [["hello"], ["hello world"]])
+def test_char_tokenizer_returns_single_character_tokens(phrase):
+    tokenizer = CharTokenizer()
     tokenized_input = tokenizer.encode(phrase)
     tokens = tokenized_input.get("input_ids")
 
-    # expected encoding length is seq_len
-    assert tokens.size(-1) == seq_len, f"Expected length to be {seq_len=}, got {tokens.size(-1)}"
-
-    # TODO: move the remaninder of this test to a separate test
-    # if we slice out the padding tokens, we should have the original phrase
     pad_token_id = tokenizer.pad_token_id
     tokens = tokens[tokens != pad_token_id].unsqueeze(0)
     sentence_decoded = tokenizer.decode(tokens)
@@ -21,13 +16,23 @@ def test_char_tokenizer_returns_single_character_tokens(seq_len, vocab_size, phr
 
 
 def test_char_tokenizer_handles_oov_tokens():
-    tokenizer = CharTokenizer(seq_len=5, vocab_size=80)
+    tokenizer = CharTokenizer(vocab={"a": 1})
     input_text = ["h"]
     tokenized_input = tokenizer.encode(input_text)
     tokens = tokenized_input.get("input_ids")
 
     oov_token = tokenizer.oov_token
     assert tokens[0, 0] == oov_token, f"Expected {oov_token=}, got {tokens[0, 0]}"
+
+
+def test_char_tokenizer_uses_custom_vocab():
+    vocab = {"a": 1, "b": 2}
+    tokenizer = CharTokenizer(vocab=vocab)
+    input_text = ["a", "b"]
+    tokenized_input = tokenizer.encode(input_text)
+    tokens = tokenized_input.get("input_ids")
+    assert tokens[0, 0] == vocab["a"], f"Expected {vocab['a']=}, got {tokens[0, 0]}"
+    assert tokens[0, 1] == vocab["b"], f"Expected {vocab['b']=}, got {tokens[0, 1]}"
 
 
 def test_huggingface_tokenizer_raises_error_with_bad_name():

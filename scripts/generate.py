@@ -27,10 +27,11 @@ if __name__ == "__main__":
 
     print(f"Loading model from checkpoint: {ckpt_path}")
     #tokenizer = HuggingFaceTokenizer(tokenizer_name="gpt2")
-    tokenizer = CharTokenizer(seq_len=512)
-    local_config = NanoGPTConfig.make_local()
-    local_config.vocabulary_size = tokenizer.vocab_size or local_config.vocabulary_size
-    model = NanoGPT.load_from_checkpoint(checkpoint_path=ckpt_path, config=local_config)
+    with open("data/tiny_shakespeare_vocab.pkl", "rb") as f:
+        import pickle
+        vocab = pickle.load(f)
+    tokenizer = CharTokenizer(vocab=vocab)
+    model = NanoGPT.load_from_checkpoint(checkpoint_path=ckpt_path)
     model.to(args.device)
 
     tokens: torch.Tensor = tokenizer.encode([prompt]).get("input_ids")    # type: ignore

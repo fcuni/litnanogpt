@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 def _use_flash_attention() -> bool:
     """
-    Use flash attention if available. Requires torch >= 2.0, if no GPU is available it defaults to torch attention 
+    Use flash attention if available. Requires torch >= 2.0, if no GPU is available it defaults to torch attention
     implementation
     """
     has_torch_2 = hasattr(F, "scaled_dot_product_attention")
@@ -16,7 +16,7 @@ def _use_flash_attention() -> bool:
 
 def _produce_att_mask(mask_size: int) -> torch.Tensor:
     "Produce an attention mask to impose left-to-right causality constraints. Assumes model att size is [B, H, L, L]"
-    ones = torch.ones((mask_size, mask_size))
+    ones = torch.ones((mask_size, mask_size), dtype=torch.bool)
     # make lower triangular matrix
     tril = torch.tril(ones)
     return tril.view((1, 1, *tril.shape))
@@ -25,6 +25,7 @@ def _produce_att_mask(mask_size: int) -> torch.Tensor:
 @dataclass
 class AttentionConfig:
     """The defaults are taken from the Nanogpt implementation."""
+
     input_dim: int = 768
     """Input dimension of the attention layer."""
     hidden_dim: int = 64
@@ -38,7 +39,7 @@ class AttentionConfig:
     @classmethod
     def make_local(cls) -> "AttentionConfig":
         """Create a small config for local use. Taken from nanogpt's local BabyGPT."""
-        return cls(128, 32, 64, 4, 0.2)
+        return cls(128, 32, 64, 4, 0)
 
     @classmethod
     def make_smoke(cls) -> "AttentionConfig":
@@ -50,8 +51,8 @@ class ParallelMultiHeadAttention(nn.Module):
     """
     This class takes num of heads as a dimension and parallelizes the  self-attention computation.
 
-    First, we take some input with dims [B, L, I] and shape it as [B, L, H, K, I]. Where B is the batch size, L is the 
-    sequence length, I is the input dimension, H is the number of heads and K=3 is the {key,value,query} triplet. Then, 
+    First, we take some input with dims [B, L, I] and shape it as [B, L, H, K, I]. Where B is the batch size, L is the
+    sequence length, I is the input dimension, H is the number of heads and K=3 is the {key,value,query} triplet. Then,
     we evaluate the B batches in parallel for each head.
     """
     def __init__(
@@ -61,7 +62,7 @@ class ParallelMultiHeadAttention(nn.Module):
         sequence_length: int,
         num_heads: int,
         dropout: float = 0,
-        is_causal: bool = True
+        is_causal: bool = True,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -101,9 +102,9 @@ class ParallelMultiHeadAttention(nn.Module):
         cropped_mask = self._att_mask[:, :, :seq_len, :seq_len]
         return att.masked_fill(cropped_mask, float("-inf"))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, att_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
-        The forward does not implement the residual inside -- following the identity highway idea. 
+        The forward does not implement the residual inside -- following the identity highway idea.
 
         See class classname:`TransformerBlock`
         """
@@ -116,7 +117,12 @@ class ParallelMultiHeadAttention(nn.Module):
 
         if self.use_flash:
             att = F.scaled_dot_product_attention(
-                q, k, v, dropout_p=self.dropout if self.training else 0, is_causal=self.is_causal, scale=self.scale
+                q,
+                k,
+                v,
+                dropout_p=self.dropout if self.training else 0,
+                is_causal=self.is_causal,
+                scale=self.scale,
             )
         else:
             # using inneficient manual implementation, following nanogpt
@@ -132,6 +138,7 @@ class ParallelMultiHeadAttention(nn.Module):
 
         # project the output
         out = self.dropout_project(self.project(y))    # [B, L, I]
+        # apply attention for padding
         return out
 
     @classmethod

@@ -5,11 +5,7 @@ import lightning as pl
 from datasets import Dataset, DatasetDict, load_dataset, load_dataset_builder
 
 from nanogpt.training.datamodules.base_data_module import BaseNLPDataModule
-from nanogpt.training.datamodules.datamodules_utils import (
-    N_WORKERS,
-    HFDatasetSpec,
-    MakeBatchesFn,
-)
+from nanogpt.training.datamodules.datamodules_utils import N_WORKERS, HFDatasetSpec
 from nanogpt.training.tokenizer import BaseTokenizer
 
 
@@ -17,18 +13,18 @@ class HFDataModule(BaseNLPDataModule):
     def __init__(
         self,
         batch_size: int,
+        block_size: int,
         tokenizer: BaseTokenizer,
         dataset_spec: HFDatasetSpec,
-        make_batches_fn: MakeBatchesFn,
         data_dir: str = "data",
         n_workers: int = N_WORKERS,
         seed: int = 42,
     ):
         super().__init__(
             batch_size=batch_size,
+            block_size=block_size,
             tokenizer=tokenizer,
             dataset_spec=dataset_spec,
-            make_batches_fn=make_batches_fn,
             data_dir=data_dir,
             n_workers=n_workers,
             seed=seed,
@@ -70,7 +66,7 @@ class HFDataModule(BaseNLPDataModule):
         text = [text_batch] if isinstance(text_batch, str) else text_batch[feature_name]
         text = cast(list[str], text)
         encoded_text = self._tokenizer.encode(text)
-        batches = self._make_batches_fn(encoded_text)
+        batches = self._tokenizer.make_batches(encoded_text, self._block_size)
         return batches
 
     def setup(self, stage: str | None = None):

@@ -2,11 +2,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
-from nanogpt.training.dataloader_fn import InputBatch, InputTokenized
-
 # Number of cpus to use for data loading
 N_WORKERS = os.cpu_count() // 2    # type: ignore
-MakeBatchesFn = Callable[[InputTokenized], InputBatch]
 
 
 @dataclass
