@@ -63,7 +63,9 @@ if __name__ == "__main__":
         logger.watch(model, log="all")
     else:
         logger = TensorBoardLogger("lightning_logs")
-    callbacks = [ModelCheckpoint(monitor="valid/loss", save_top_k=1, mode="min"), CosineLRCallback()]
+    callbacks = [
+        ModelCheckpoint(monitor="valid/loss", save_top_k=1, mode="min", dirpath="data/checkpoints"), CosineLRCallback()
+    ]
 
     trainer = pl.Trainer(
         max_epochs=10,
@@ -71,7 +73,6 @@ if __name__ == "__main__":
         logger=logger,
         precision="16-mixed",
         callbacks=callbacks,    # type: ignore
-        default_root_dir="checkpoints",
         gradient_clip_val=1.0,
         accelerator=args.device,
     )
