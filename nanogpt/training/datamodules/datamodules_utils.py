@@ -1,6 +1,5 @@
 import os
 from dataclasses import dataclass
-from typing import Callable
 
 # Number of cpus to use for data loading
 N_WORKERS = os.cpu_count() // 2    # type: ignore
