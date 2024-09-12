@@ -9,7 +9,7 @@ def _get_freqs(dim: int, max_len: int, base_freq: int) -> torch.Tensor:
     """
     exponents = 2 * torch.arange(0, dim // 2, dtype=torch.float32) / dim
     freqs = 1 / (base_freq**exponents)
-    arange_ = torch.arange(max_len)
+    arange_ = torch.arange(1, max_len + 1)
     freqs = torch.outer(arange_, freqs)
     z = torch.polar(torch.ones_like(exponents), freqs)    # Put nums in unit circle
     return z
@@ -24,13 +24,13 @@ def _reshape_for_broadcast(z_tensor: torch.Tensor, x: torch.Tensor):
     https://github.com/meta-llama/llama3/blob/main/llama/model.py
     where the Llama people extend this to arbitrary `x.ndim` dimensions.
     """
-    assert x.ndim == 5, f"Expected the input tokens to have five dimensions [B, H, L, e, 2], got {x.ndim}"
+    assert x.ndim == 4, f"Expected the input tokens to have five dimensions [B, H, L, e], got {x.ndim}"
     assert z_tensor.ndim == 2, f"Expected the frequency matrix to have two dimensions, got {z_tensor.ndim}"
 
-    _, _, seq_len, emb_dim, _ = x.shape
+    _, _, seq_len, emb_dim = x.shape
     assert z_tensor.shape == (seq_len, emb_dim)
 
-    broadcast_shape = [1, 1, seq_len, emb_dim, 1]    # reshape to same dims as x
+    broadcast_shape = [1, 1, seq_len, emb_dim]    # reshape to same dims as x
     return z_tensor.view(*broadcast_shape)
 
 
@@ -54,7 +54,7 @@ class RotaryEmbeddings(nn.Module):
         # Input is expected to have dims [B, H, L, E]
         *other, _ = query.shape
 
-        # Breaks the emb_dim in half and assigns the first the odd positions to cosine component and the even ones
+        # Breaks the emb_dim in half and assigns the odd dimensions to cosine component and the even ones
         # the sine component
         zq_ = torch.view_as_complex(query.float().reshape(*other, -1, 2))    # [B, H, L, e, 2]
         zv_ = torch.view_as_complex(values.float().reshape(*other, -1, 2))    # [B, H, L, e, 2]

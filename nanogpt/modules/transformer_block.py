@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from nanogpt.modules.llama_attention_head import LlamaAttentionHead
 from nanogpt.modules.parallel_multi_head_attention import (
     AttentionConfig,
     ParallelMultiHeadAttention,
@@ -12,7 +13,9 @@ class TransformerBlock(nn.Module):
         self,
         attention_config: AttentionConfig = AttentionConfig(),
         ff_dims: list[int] | None = None,
-        is_causal: bool = True
+        is_causal: bool = True,
+        use_llama_attention: bool = False,
+        base_freq_rope: int = 100_000,
     ):
         super().__init__()
 
@@ -20,7 +23,12 @@ class TransformerBlock(nn.Module):
         self._layer_norm_att = nn.LayerNorm(input_dim)
         self._layer_norm_projection = nn.LayerNorm(input_dim)
 
-        self._mh_att = ParallelMultiHeadAttention.from_config(attention_config, is_causal=is_causal)
+        if use_llama_attention:
+            self._mh_att = LlamaAttentionHead.from_config(
+                attention_config, is_causal=is_causal, base_freq=base_freq_rope
+            )
+        else:
+            self._mh_att = ParallelMultiHeadAttention.from_config(attention_config, is_causal=is_causal)
 
         ff_dims = ff_dims or [4 * input_dim, input_dim]
 
@@ -41,7 +49,6 @@ class TransformerBlock(nn.Module):
         y_ = self._layer_norm_projection(x_)
         y_ = self._ff_projection(y_)
 
-        # TODO: explore identity highway connection
         return y_ + x_
 
 
